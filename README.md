@@ -1,7 +1,7 @@
 # SignalBridge PHP SDK
 
-[![Latest Version](https://img.shields.io/packagist/v/nugsoft/signalbridge-php.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-php)
-[![Total Downloads](https://img.shields.io/packagist/dt/nugsoft/signalbridge-php.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-php)
+[![Latest Version](https://img.shields.io/packagist/v/nugsoft/signalbridge-php-sdk.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-php-sdk)
+[![Total Downloads](https://img.shields.io/packagist/dt/nugsoft/signalbridge-php-sdk.svg?style=flat-square)](https://packagist.org/packages/nugsoft/signalbridge-php-sdk)
 
 Vanilla PHP SDK for SignalBridge SMS Gateway - Send SMS messages through multiple vendors (SpeedaMobile, Africa's Talking) with a unified API. Works with any PHP project (no framework required).
 
@@ -28,7 +28,7 @@ Vanilla PHP SDK for SignalBridge SMS Gateway - Send SMS messages through multipl
 Install via Composer:
 
 ```bash
-composer require nugsoft/signalbridge-php
+composer require nugsoft/signalbridge-php-sdk
 ```
 
 ## Quick Start
