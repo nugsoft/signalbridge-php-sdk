@@ -42,8 +42,7 @@ use Nugsoft\SignalBridge\SignalBridgeClient;
 
 // Initialize the client
 $client = new SignalBridgeClient(
-    token: 'your_api_token_here',
-    baseUrl: 'https://signal-bridge.nugsoftstagging.com/api'
+    token: 'your_api_token_here'
 );
 
 // Send SMS
@@ -51,7 +50,6 @@ $result = $client->sendSms(
     recipient: '256700000000',
     message: 'Hello from PHP!',
     options: [
-        'sender_id' => 'NUGSOFT',
         'metadata' => ['user_id' => 123]
     ]
 );
@@ -90,7 +88,6 @@ try {
         recipient: '256700000000',
         message: 'Your verification code is 123456',
         options: [
-            'sender_id' => 'NUGSOFT',
             'metadata' => [
                 'action' => 'otp_verification',
                 'user_id' => 789
@@ -98,11 +95,11 @@ try {
         ]
     );
 
-    echo "✅ Message sent successfully!\n";
+    echo "Message sent successfully!\n";
     echo "Cost: {$result['data']['cost']} UGX\n";
 
 } catch (InsufficientBalanceException $e) {
-    echo "❌ Insufficient balance\n";
+    echo "Insufficient balance\n";
     echo "Required: {$e->getRequiredBalance()}\n";
     echo "Available: {$e->getCurrentBalance()}\n";
 }
@@ -132,9 +129,7 @@ foreach ($students as $student) {
     ];
 }
 
-$result = $client->sendBatch($messages, [
-    'sender_id' => 'NUGSOFT'
-]);
+$result = $client->sendBatch($messages);
 
 echo "Sent: {$result['data']['successful']}/{$result['data']['total']}\n";
 ```
@@ -151,7 +146,6 @@ $result = $client->sendSms(
     recipient: '256700000000',
     message: 'Reminder: Your appointment is tomorrow at 10 AM',
     options: [
-        'sender_id' => 'NUGSOFT',
         'scheduled_at' => $tomorrow9am,
         'metadata' => ['type' => 'appointment_reminder']
     ]
@@ -178,10 +172,10 @@ $segments = $client->calculateSegments($message);
 $estimatedCost = $client->estimateCost($message, $balance['segment_price']);
 
 if ($balance['available_balance'] < $estimatedCost) {
-    echo "❌ Insufficient balance for this message\n";
+    echo "Insufficient balance for this message\n";
 } else {
     $result = $client->sendSms('256700000000', $message);
-    echo "✅ Message sent!\n";
+    echo "Message sent!\n";
 }
 ```
 
@@ -227,7 +221,6 @@ try {
         recipient: $phone,
         message: "Your verification code is {$otp}. Valid for 5 minutes.",
         options: [
-            'sender_id' => 'NUGSOFT',
             'metadata' => [
                 'action' => 'otp_verification',
                 'ip_address' => $_SERVER['REMOTE_ADDR']
@@ -255,10 +248,7 @@ try {
 
 ```php
 $client = new SignalBridgeClient(
-    token: 'your_token',                                                  // Required
-    baseUrl: 'https://signal-bridge.nugsoftstagging.com/api',            // Optional
-    timeout: 30,                                                          // Optional (seconds)
-    logging: true                                                         // Optional (log errors)
+    token: 'your_token'
 );
 ```
 
@@ -269,7 +259,6 @@ $result = $client->sendSms(
     recipient: '256700000000',           // Required: Phone number
     message: 'Your message here',        // Required: Message content (max 1000 chars)
     options: [
-        'sender_id' => 'NUGSOFT',        // Optional: Custom sender ID
         'metadata' => [],                 // Optional: Custom data
         'is_test' => false,               // Optional: Test mode flag
         'scheduled_at' => '2025-12-01...' // Optional: ISO 8601 datetime
@@ -309,7 +298,6 @@ $result = $client->sendBatch(
         ]
     ],
     options: [
-        'sender_id' => 'NUGSOFT',
         'is_test' => false
     ]
 );
@@ -335,7 +323,7 @@ $summary = $client->getBalanceSummary();
 $transactions = $client->getTransactions([
     'per_page' => 15,
     'page' => 1,
-    'type' => 'debit',              // credit, debit, allocation, adjustment, refund
+    'type' => 'debit',              // credit, debit
     'start_date' => '2025-11-01',
     'end_date' => '2025-11-30'
 ]);
@@ -439,22 +427,9 @@ Run the test suite:
 composer test
 ```
 
-## Support
-
-For issues, feature requests, or questions:
-
-- **Internal Support**: Contact Nugsoft DevOps team
-- **Documentation**: [SignalBridge API Docs](https://signal-bridge.nugsoftstagging.com/docs)
-- **Email**: dev@nugsoft.com
-
 ## License
 
 The MIT License (MIT). This package is proprietary to Nugsoft.
-
-## Credits
-
-- **Nugsoft Development Team**
-- Built for Nugsoft product teams and partners
 
 ---
 

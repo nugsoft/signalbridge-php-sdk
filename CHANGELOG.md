@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `signalbridge-php` will be documented in this file.
+All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [1.0.0] - 2025-11-26
 
@@ -24,15 +24,12 @@ All notable changes to `signalbridge-php` will be documented in this file.
 - Support for PHP 7.4, 8.0, 8.1, 8.2, 8.3, and 8.4
 
 ### Features
-- ✅ Framework-agnostic design
-- ✅ Works with any PHP project
-- ✅ Guzzle HTTP client for reliable API communication
-- ✅ Automatic segment calculation and cost estimation
-- ✅ Metadata support for audit trails
-- ✅ Test mode for development
-- ✅ Custom sender ID support
-- ✅ Scheduled message delivery
-- ✅ Batch processing with detailed results
-- ✅ Balance tracking and transaction history
-- ✅ Comprehensive error handling
-- ✅ Error logging support
+- Framework-agnostic design
+- Works with any PHP project
+- Guzzle HTTP client for reliable API communication
+- Automatic segment calculation and cost estimation
+- Metadata support for audit trails
+- Test mode for development
+- Batch processing with detailed results
+- Balance tracking and transaction history
+- Comprehensive error handling

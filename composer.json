@@ -1,5 +1,5 @@
 {
-    "name": "nugsoft/signalbridge-php",
+    "name": "nugsoft/signalbridge-php-sdk",
     "description": "PHP SDK for SignalBridge SMS Gateway - Send SMS messages through multiple vendors with unified API (Vanilla PHP, no framework required)",
     "keywords": [
         "php",
@@ -15,8 +15,8 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Nugsoft",
-            "email": "info@nugsoft.com"
+            "name": "Asaba William",
+            "email": "asabawilliam@gmail.com"
         }
     ],
     "require": {

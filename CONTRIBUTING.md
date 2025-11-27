@@ -1,6 +1,6 @@
-# Contributing to SignalBridge Laravel SDK
+# Contributing to SignalBridge PHP SDK
 
-Thank you for considering contributing to the SignalBridge Laravel SDK!
+Thank you for considering contributing to the SignalBridge PHP SDK!
 
 ## For Nugsoft Team Members
 
@@ -21,23 +21,12 @@ This package is maintained internally by Nugsoft. If you'd like to contribute:
    composer test
    ```
 
-4. **Format Code**
-   ```bash
-   vendor/bin/pint
-   ```
-
-5. **Submit Pull Request**
+4. **Submit Pull Request**
    - Provide clear description of changes
    - Link any related issues
    - Request review from team lead
 
-## Code Style
 
-This project follows PSR-12 coding standards. Run Laravel Pint before committing:
-
-```bash
-vendor/bin/pint
-```
 
 ## Testing
 
@@ -55,6 +44,3 @@ Update README.md if you:
 - Add new exceptions
 - Modify configuration options
 
-## Questions?
-
-Contact the Nugsoft DevOps team or post in the internal Slack channel.
