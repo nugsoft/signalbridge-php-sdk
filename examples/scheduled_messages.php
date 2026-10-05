@@ -6,8 +6,9 @@ use Nugsoft\SignalBridge\SignalBridgeClient;
 
 // Initialize the client
 $client = new SignalBridgeClient(
-  token: 'your_api_token_here',
-  baseUrl: 'https://signal-bridge.nugsoftstagging.com/api'
+  token: getenv('SIGNALBRIDGE_TOKEN') ?: 'your_api_token_here',
+  // baseUrl defaults to SignalBridgeClient::DEFAULT_BASE_URL (production).
+  // Pass baseUrl: '...' to point at another environment.
 );
 
 // Schedule a reminder for tomorrow at 9 AM
