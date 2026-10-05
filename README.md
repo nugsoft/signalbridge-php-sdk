@@ -24,6 +24,36 @@ Inside a Laravel application use
 instead: same channels, same exceptions, same segment maths, plus config and a
 facade. This package is for everything else.
 
+## Using this SDK with an AI coding agent
+
+The package ships agent guidance at [`AGENTS.md`](AGENTS.md), covering the things
+that are easy to get expensively wrong — retrying a send that was already
+charged, sending real messages from a test suite, hand-rolling segment costs,
+skipping webhook signature verification.
+
+Nothing discovers it on its own, because after installation it lives under
+`vendor/`. Wire it up once:
+
+**Claude Code** — add one line to your project's `CLAUDE.md`. The path stays
+inside the working directory, so it needs no approval:
+
+```md
+@vendor/nugsoft/signalbridge-php-sdk/AGENTS.md
+```
+
+Claude Code also reads your project's own `AGENTS.md` when there is no
+`CLAUDE.md`, so the same line works there.
+
+**Other agents** (Cursor, Copilot, Codex, Windsurf) — copy the contents into
+whatever instructions file the tool reads:
+
+```bash
+cat vendor/nugsoft/signalbridge-php-sdk/AGENTS.md >> AGENTS.md
+```
+
+Re-copy it when you upgrade the package, or prefer the import above so it stays
+current by itself.
+
 ## Requirements
 
 - PHP 8.1 or higher
