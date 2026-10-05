@@ -2,278 +2,310 @@
 
 namespace Nugsoft\SignalBridge;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
-use Nugsoft\SignalBridge\Exceptions\InsufficientBalanceException;
-use Nugsoft\SignalBridge\Exceptions\NoClientException;
-use Nugsoft\SignalBridge\Exceptions\ServiceUnavailableException;
+use GuzzleHttp\Client as HttpClient;
+use GuzzleHttp\ClientInterface;
+use Nugsoft\SignalBridge\Channels\BaseChannelClient;
+use Nugsoft\SignalBridge\Channels\MobileMoney\MobileMoneyClient;
+use Nugsoft\SignalBridge\Channels\Sms\SmsClient;
+use Nugsoft\SignalBridge\Channels\Ussd\UssdClient;
+use Nugsoft\SignalBridge\Channels\WhatsApp\WhatsAppClient;
 use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
-use Nugsoft\SignalBridge\Exceptions\ValidationException;
+use Nugsoft\SignalBridge\Support\MessageSegments;
+use Nugsoft\SignalBridge\Support\WebhookSignature;
 
-class SignalBridgeClient
+/**
+ * Framework-free client for the SignalBridge gateway.
+ *
+ * Mirrors the Laravel SDK (nugsoft/signalbridge-laravel-sdk): same channel
+ * accessors, same typed exceptions, same segment maths. Use that package
+ * instead inside a Laravel application.
+ */
+class SignalBridgeClient extends BaseChannelClient
 {
-    private string $baseUrl;
-    private string $token;
-    private Client $httpClient;
-    private int $timeout;
-    private bool $logging;
+    public const DEFAULT_BASE_URL = 'https://signal-bridge.nugsoftapps.net/api';
 
+    private ?SmsClient $smsChannel = null;
+
+    private ?WhatsAppClient $whatsAppChannel = null;
+
+    private ?MobileMoneyClient $mobileMoneyChannel = null;
+
+    private ?UssdClient $ussdChannel = null;
+
+    /**
+     * @param  string  $token  An API token from the SignalBridge dashboard
+     * @param  string  $baseUrl  The gateway API root, including /api
+     * @param  ClientInterface|null  $httpClient  Supply your own Guzzle client to
+     *                                            control proxies, TLS or testing
+     */
     public function __construct(
         string $token,
-        string $baseUrl = 'https://signal-bridge.nugsoftstagging.com/api',
+        string $baseUrl = self::DEFAULT_BASE_URL,
         int $timeout = 30,
-        bool $logging = true
+        bool $logging = true,
+        ?ClientInterface $httpClient = null
     ) {
-        if (empty($token)) {
+        if ($token === '') {
             throw new SignalBridgeException('API token is required');
         }
 
-        $this->token = $token;
-        $this->baseUrl = rtrim($baseUrl, '/');
-        $this->timeout = $timeout;
-        $this->logging = $logging;
+        parent::__construct(
+            baseUrl: rtrim($baseUrl, '/'),
+            token: $token,
+            timeout: $timeout,
+            // Deliberately no base_uri and no retry middleware: Guzzle resolves
+            // a path beginning with "/" against the host root and would drop
+            // the /api prefix, and retrying a POST can send an SMS twice.
+            httpClient: $httpClient ?? new HttpClient,
+            logging: $logging
+        );
+    }
 
-        $this->httpClient = new Client([
-            'base_uri' => $this->baseUrl,
-            'timeout' => $this->timeout,
-            'headers' => [
-                'Authorization' => "Bearer {$this->token}",
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
+    // -------------------------------------------------------------------------
+    // Channel accessors
+    // -------------------------------------------------------------------------
+
+    public function sms(): SmsClient
+    {
+        return $this->smsChannel ??= new SmsClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
+    }
+
+    public function whatsapp(): WhatsAppClient
+    {
+        return $this->whatsAppChannel ??= new WhatsAppClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
+    }
+
+    public function mobileMoney(): MobileMoneyClient
+    {
+        return $this->mobileMoneyChannel ??= new MobileMoneyClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
+    }
+
+    /**
+     * @note USSD support is planned — available once the gateway's USSD engine ships.
+     */
+    public function ussd(): UssdClient
+    {
+        return $this->ussdChannel ??= new UssdClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
+    }
+
+    // -------------------------------------------------------------------------
+    // SMS — kept for backward compatibility (proxies to SmsClient)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @param  array<string, mixed>  $options  metadata, is_test, sender_id, scheduled_at
+     * @return array<string, mixed>
+     */
+    public function sendSms(string $recipient, string $message, array $options = []): array
+    {
+        return $this->sms()->send($recipient, $message, $options);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $messages
+     * @param  array<string, mixed>  $options  is_test, sender_id
+     * @return array<string, mixed>
+     */
+    public function sendBatch(array $messages, array $options = []): array
+    {
+        return $this->sms()->sendBatch($messages, $options);
+    }
+
+    /**
+     * Look up one message's delivery status.
+     *
+     * @return array<string, mixed>
+     */
+    public function getMessageStatus(int $messageId, bool $refresh = false): array
+    {
+        return $this->sms()->status($messageId, $refresh);
+    }
+
+    /**
+     * List messages with their delivery status.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function getMessages(array $filters = []): array
+    {
+        return $this->sms()->messages($filters);
+    }
+
+    // -------------------------------------------------------------------------
+    // Account
+    // -------------------------------------------------------------------------
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getBalance(string $currency = 'UGX'): array
+    {
+        return $this->request('GET', 'balance', ['query' => ['currency' => strtoupper($currency)]]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getBalanceSummary(): array
+    {
+        return $this->request('GET', 'balance/summary');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters  per_page, page, type, start_date, end_date
+     * @return array<string, mixed>
+     */
+    public function getTransactions(array $filters = []): array
+    {
+        return $this->request('GET', 'balance/transactions', ['query' => $filters]);
+    }
+
+    /**
+     * Ask the administrators for a top-up. This does not move money.
+     *
+     * @return array<string, mixed>
+     */
+    public function requestCredit(float $amount, string $currency = 'UGX', ?string $description = null): array
+    {
+        $payload = ['amount' => $amount, 'currency' => strtoupper($currency)];
+
+        if ($description !== null) {
+            $payload['description'] = $description;
+        }
+
+        return $this->request('POST', 'balance/add-credit', ['json' => $payload]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getTokens(): array
+    {
+        return $this->request('GET', 'tokens');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function revokeCurrentToken(): array
+    {
+        return $this->request('DELETE', 'tokens/current');
+    }
+
+    // -------------------------------------------------------------------------
+    // Webhooks
+    // -------------------------------------------------------------------------
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function listWebhooks(): array
+    {
+        return $this->request('GET', 'webhooks');
+    }
+
+    /**
+     * The signing secret is returned once, in this response only.
+     *
+     * @param  array<int, string>  $events
+     * @return array<string, mixed>
+     */
+    public function createWebhook(string $url, array $events = ['*'], bool $isActive = true): array
+    {
+        return $this->request('POST', 'webhooks', [
+            'json' => [
+                'url' => $url,
+                'events' => $events,
+                'is_active' => $isActive,
             ],
         ]);
     }
 
     /**
-     * Send an SMS message
-     *
-     * @param string $recipient Phone number (e.g., '256700000000')
-     * @param string $message Message content (max 1000 chars)
-     * @param array $options Optional parameters
-     * @return array Response data
-     * @throws SignalBridgeException
+     * @return array<string, mixed>
      */
-    public function sendSms(string $recipient, string $message, array $options = []): array
+    public function getWebhook(int $webhookId): array
     {
-        $payload = array_merge([
-            'recipient' => $recipient,
-            'message' => $message,
-            'metadata' => [],
-            'is_test' => false,
-        ], $options);
-
-        try {
-            $response = $this->httpClient->post('/sms/send', [
-                'json' => $payload,
-            ]);
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+        return $this->request('GET', "webhooks/{$webhookId}");
     }
 
     /**
-     * Send batch SMS messages
-     *
-     * @param array $messages Array of message objects
-     * @param array $options Optional parameters
-     * @return array Response data
-     * @throws SignalBridgeException
+     * @param  array<string, mixed>  $data  url, events, is_active
+     * @return array<string, mixed>
      */
-    public function sendBatch(array $messages, array $options = []): array
+    public function updateWebhook(int $webhookId, array $data): array
     {
-        $payload = [
-            'messages' => $messages,
-            'is_test' => $options['is_test'] ?? false,
-        ];
-
-        if (isset($options['sender_id'])) {
-            $payload['sender_id'] = $options['sender_id'];
-        }
-
-        try {
-            $response = $this->httpClient->post('/sms/send-batch', [
-                'json' => $payload,
-                'timeout' => 60, // Longer timeout for batch operations
-            ]);
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+        return $this->request('PUT', "webhooks/{$webhookId}", ['json' => $data]);
     }
 
     /**
-     * Get current balance for a currency
-     *
-     * @param string $currency Currency code (default: UGX)
-     * @return array Balance details
-     * @throws SignalBridgeException
+     * @return array<string, mixed>
      */
-    public function getBalance(string $currency = 'UGX'): array
+    public function deleteWebhook(int $webhookId): array
     {
-        try {
-            $response = $this->httpClient->get('/balance', [
-                'query' => ['currency' => $currency],
-            ]);
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+        return $this->request('DELETE', "webhooks/{$webhookId}");
     }
 
     /**
-     * Get balance summary with recent activity
-     *
-     * @return array Summary data
-     * @throws SignalBridgeException
+     * @return array<string, mixed>
      */
-    public function getBalanceSummary(): array
+    public function regenerateWebhookSecret(int $webhookId): array
     {
-        try {
-            $response = $this->httpClient->get('/balance/summary');
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+        return $this->request('POST', "webhooks/{$webhookId}/regenerate-secret");
     }
 
     /**
-     * Get transaction history
+     * Verify that an inbound webhook really came from SignalBridge.
      *
-     * @param array $filters Filter options (per_page, page, type, start_date, end_date)
-     * @return array Paginated transactions
-     * @throws SignalBridgeException
+     * @param  string  $payload  The RAW request body, exactly as received
+     * @param  string  $signature  The X-SignalBridge-Signature header
+     * @param  string  $secret  The signing secret shown when the webhook was created
      */
-    public function getTransactions(array $filters = []): array
+    public function verifyWebhookSignature(string $payload, string $signature, string $secret): bool
     {
-        try {
-            $response = $this->httpClient->get('/balance/transactions', [
-                'query' => $filters,
-            ]);
+        return WebhookSignature::verify($payload, $signature, $secret);
+    }
 
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+    // -------------------------------------------------------------------------
+    // Exports
+    // -------------------------------------------------------------------------
+
+    /**
+     * @param  array<string, mixed>  $filters  start_date, end_date, status
+     */
+    public function exportMessages(array $filters = []): string
+    {
+        return $this->requestBody('GET', 'export/messages', ['query' => $filters], timeout: 120);
     }
 
     /**
-     * Get all API tokens
-     *
-     * @return array List of tokens
-     * @throws SignalBridgeException
+     * @param  array<string, mixed>  $filters  start_date, end_date, type
      */
-    public function getTokens(): array
+    public function exportTransactions(array $filters = []): string
     {
-        try {
-            $response = $this->httpClient->get('/tokens');
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
+        return $this->requestBody('GET', 'export/transactions', ['query' => $filters], timeout: 120);
     }
 
-    /**
-     * Revoke the current API token
-     *
-     * @return array Response data
-     * @throws SignalBridgeException
-     */
-    public function revokeCurrentToken(): array
-    {
-        try {
-            $response = $this->httpClient->delete('/tokens/current');
-
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
-            return $this->handleError($e);
-        }
-    }
+    // -------------------------------------------------------------------------
+    // Utilities
+    // -------------------------------------------------------------------------
 
     /**
-     * Calculate approximate segments for a message
+     * Segments a message will be split into.
      *
-     * @param string $message Message content
-     * @return int Number of segments
+     * Delegates to MessageSegments so this and the gateway cannot disagree.
      */
     public function calculateSegments(string $message): int
     {
-        $length = mb_strlen($message);
-        $isUnicode = !$this->isGsm7Bit($message);
-
-        if ($isUnicode) {
-            return $length <= 70 ? 1 : (int) ceil($length / 67);
-        }
-
-        return $length <= 160 ? 1 : (int) ceil($length / 153);
+        return MessageSegments::count($message);
     }
 
     /**
-     * Estimate cost for a message
-     *
-     * @param string $message Message content
-     * @param float $segmentPrice Price per segment
-     * @return float Estimated cost
+     * @param  float  $segmentPrice  Price per segment, from getBalance()
      */
     public function estimateCost(string $message, float $segmentPrice): float
     {
-        return $this->calculateSegments($message) * $segmentPrice;
-    }
-
-    /**
-     * Check if message uses GSM 7-bit encoding
-     *
-     * @param string $text Message text
-     * @return bool
-     */
-    private function isGsm7Bit(string $text): bool
-    {
-        $gsm7BitChars = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
-
-        for ($i = 0; $i < mb_strlen($text); $i++) {
-            if (mb_strpos($gsm7BitChars, mb_substr($text, $i, 1)) === false) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Handle API errors
-     *
-     * @param RequestException $exception
-     * @return never
-     * @throws SignalBridgeException
-     */
-    private function handleError(RequestException $exception): never
-    {
-        $response = $exception->getResponse();
-        $statusCode = $response ? $response->getStatusCode() : 500;
-        $body = $response ? $response->getBody()->getContents() : '{}';
-        $data = json_decode($body, true) ?? [];
-
-        if ($this->logging) {
-            error_log(sprintf(
-                'SignalBridge API Error [%d]: %s',
-                $statusCode,
-                $data['message'] ?? $exception->getMessage()
-            ));
-        }
-
-        $message = $data['message'] ?? 'Unknown error occurred';
-
-        match ($statusCode) {
-            402 => throw new InsufficientBalanceException($message, $data['data'] ?? []),
-            403 => throw new NoClientException($message),
-            422 => throw new ValidationException($message, $data['errors'] ?? [], $data),
-            503 => throw new ServiceUnavailableException($message),
-            default => throw new SignalBridgeException($message, $statusCode, $data),
-        };
+        return MessageSegments::estimateCost($message, $segmentPrice);
     }
 }
