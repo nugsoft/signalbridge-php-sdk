@@ -8,8 +8,9 @@ use Nugsoft\SignalBridge\Exceptions\ValidationException;
 
 // Initialize the client
 $client = new SignalBridgeClient(
-  token: 'your_api_token_here',
-  baseUrl: 'https://signal-bridge.nugsoftstagging.com/api'
+  token: getenv('SIGNALBRIDGE_TOKEN') ?: 'your_api_token_here',
+  // baseUrl defaults to SignalBridgeClient::DEFAULT_BASE_URL (production).
+  // Pass baseUrl: '...' to point at another environment.
 );
 
 // Example 1: Send a simple SMS
@@ -46,9 +47,9 @@ try {
   $balance = $client->getBalance('UGX');
 
   echo "Current Balance\n";
-  echo "Balance: {$balance['balance']} UGX\n";
-  echo "Available: {$balance['available_balance']} UGX\n";
-  echo "Segment price: {$balance['segment_price']} UGX\n\n";
+  echo "Balance: {$balance['data']['balance']} UGX\n";
+  echo "Available: {$balance['data']['available_balance']} UGX\n";
+  echo "Segment price: {$balance['data']['segment_price']} UGX\n\n";
 } catch (\Exception $e) {
   echo "Error getting balance: {$e->getMessage()}\n";
 }

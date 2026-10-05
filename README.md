@@ -14,12 +14,19 @@ Vanilla PHP SDK for SignalBridge SMS Gateway - Send SMS messages through multipl
 - **Scheduled Messages** - Schedule SMS for future delivery
 - **Segment Calculation** - Automatic cost estimation (GSM 7-bit vs Unicode)
 - **Custom Exceptions** - Typed exceptions for better error handling
-- **PHP 7.4+** - Compatible with modern PHP versions
+- **Every Channel** - SMS, WhatsApp and Mobile Money, with USSD stubbed for when it ships
+- **Delivery Status** - Read a message's status, or follow up a whole batch
+- **Webhooks** - Manage endpoints and verify inbound signatures
 - **Composer Ready** - Easy installation via Composer
+
+Inside a Laravel application use
+[nugsoft/signalbridge-laravel-sdk](https://github.com/nugsoft/signalbridge-laravel-sdk)
+instead: same channels, same exceptions, same segment maths, plus config and a
+facade. This package is for everything else.
 
 ## Requirements
 
-- PHP 7.4 or higher
+- PHP 8.1 or higher
 - Guzzle HTTP 7.0+
 - Composer
 
@@ -62,7 +69,7 @@ echo "Message sent! ID: {$result['data']['message_id']}\n";
 Contact your system administrator or generate a token via cURL:
 
 ```bash
-curl -X POST https://signal-bridge.nugsoftstagging.com/api/tokens \
+curl -X POST https://signal-bridge.nugsoftapps.net/api/tokens \
   -H "Content-Type: application/json" \
   -d '{
     "email": "your-product@nugsoft.com",
@@ -159,17 +166,18 @@ echo "Message scheduled for: {$tomorrow9am}\n";
 ```php
 <?php
 
-// Get current balance
-$balance = $client->getBalance('UGX');
+// Get current balance — the resource comes back under 'data'
+$balance = $client->getBalance('UGX')['data'];
 
 echo "Balance: {$balance['balance']} UGX\n";
 echo "Available: {$balance['available_balance']} UGX\n";
 echo "Segment price: {$balance['segment_price']} UGX\n";
 
-// Calculate cost before sending
+// Calculate cost before sending. These segment figures match the gateway's own,
+// so the estimate is what the invoice will say.
 $message = 'Your message here';
 $segments = $client->calculateSegments($message);
-$estimatedCost = $client->estimateCost($message, $balance['segment_price']);
+$estimatedCost = $client->estimateCost($message, (float) $balance['segment_price']);
 
 if ($balance['available_balance'] < $estimatedCost) {
     echo "Insufficient balance for this message\n";
@@ -244,6 +252,85 @@ try {
 
 ## API Reference
 
+### Base URL
+
+The client defaults to the production gateway,
+`https://signal-bridge.nugsoftapps.net/api`, exposed as
+`SignalBridgeClient::DEFAULT_BASE_URL`. Pass `baseUrl:` to point somewhere else.
+
+Always include the `/api` suffix. The URL is used as given, so a missing suffix
+produces 404s that the SDK reports as "API endpoint not found".
+
+### Token abilities
+
+A token carries abilities, and the gateway enforces them on every route. A token
+created without a selection gets `*` and can do everything. A narrower token
+gets a `403` with `required_ability` naming what was missing, which this SDK
+raises as `InsufficientPermissionsException`:
+
+| Ability | Allows |
+|---------|--------|
+| `sms:send` | `sendSms()`, `sendBatch()` |
+| `sms:read` | `getMessageStatus()`, `getMessages()` |
+| `balance:read` | `getBalance()`, `getBalanceSummary()`, `getTransactions()` |
+| `balance:request-credit` | `requestCredit()` |
+| `webhooks:read` | `listWebhooks()`, `getWebhook()` |
+| `webhooks:write` | `createWebhook()`, `updateWebhook()`, `deleteWebhook()`, `regenerateWebhookSecret()` |
+| `export:read` | `exportMessages()`, `exportTransactions()` |
+
+> `whatsapp:send`, `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the WhatsApp and mobile money channels are unreleased, so reaching either needs a full-access (`*`) token.
+
+### Channels
+
+```php
+$client->sms();          // SmsClient — send, sendBatch, status, messages
+$client->whatsapp();     // WhatsAppClient — send, sendTemplate
+$client->mobileMoney();  // MobileMoneyClient — initiate, verify
+$client->ussd();         // UssdClient — planned, not live on the gateway yet
+```
+
+The flat methods (`sendSms()`, `sendBatch()`, …) are kept and proxy to the
+channels, so existing code keeps working.
+
+### Delivery status
+
+```php
+// One message. Pass refresh: true to ask the vendor live — rate limited, and
+// rarely needed, because the gateway polls vendors in the background.
+$status = $client->getMessageStatus($messageId);
+echo $status['data']['status'];      // queued, sent, delivered, failed …
+
+// A whole batch, by the ids sendBatch() returned. 'summary' counts the entire
+// filtered set rather than the current page.
+$messages = $client->getMessages(['ids' => [11, 12, 13]]);
+print_r($messages['summary']['by_status']);
+```
+
+### Webhooks
+
+```php
+$created = $client->createWebhook('https://your-app.test/webhooks/sms', ['message.delivered']);
+$secret  = $created['secret'];   // shown once, at creation
+
+// In your webhook endpoint — verify against the RAW body, never a re-encoded copy.
+use Nugsoft\SignalBridge\Support\WebhookSignature;
+
+$payload   = file_get_contents('php://input');
+$signature = WebhookSignature::signatureFromServer();
+
+if (! WebhookSignature::verify($payload, $signature, $secret)) {
+    http_response_code(403);
+    exit;
+}
+```
+
+### Exports
+
+```php
+file_put_contents('messages.csv', $client->exportMessages(['start_date' => '2026-01-01']));
+file_put_contents('transactions.csv', $client->exportTransactions(['type' => 'debit']));
+```
+
 ### Constructor
 
 ```php
@@ -303,11 +390,20 @@ $result = $client->sendBatch(
 );
 ```
 
+### Request Credit
+
+```php
+// Asks the administrators for a top-up. This never moves money by itself.
+$client->requestCredit(10000, 'UGX', 'Monthly top-up');
+```
+
 ### Get Balance
 
 ```php
 $balance = $client->getBalance('UGX');
-// Returns: ['balance' => 100.00, 'available_balance' => 100.00, ...]
+// Returns: ['success' => true, 'data' => ['currency' => 'UGX', 'balance' => 100.00,
+//           'available_balance' => 100.00, 'segment_price' => 75.00, ...]]
+// Reading a balance never creates one: a currency with nothing stored reads as zero.
 ```
 
 ### Get Balance Summary
@@ -421,11 +517,18 @@ Check the `/examples` directory for complete working examples:
 
 ## Testing
 
-Run the test suite:
-
 ```bash
+composer install
 composer test
 ```
+
+Every test fakes the HTTP layer with Guzzle's `MockHandler`. A test that reached
+the real gateway would send a real SMS and bill the account, so none may.
+
+`tests/MessageSegmentsTest.php` pins the segment maths against the gateway's own
+cases, including the GSM alphabet itself. If the gateway's
+`BalanceService::calculateSegments()` changes, that test should fail here before
+a client is quoted a price that does not match their invoice.
 
 ## License
 
