@@ -93,7 +93,7 @@ class SignalBridgeClient extends BaseChannelClient
     // -------------------------------------------------------------------------
 
     /**
-     * @param  array<string, mixed>  $options  metadata, is_test, sender_id, scheduled_at
+     * @param  array<string, mixed>  $options  metadata, is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT), scheduled_at
      * @return array<string, mixed>
      */
     public function sendSms(string $recipient, string $message, array $options = []): array
@@ -103,7 +103,7 @@ class SignalBridgeClient extends BaseChannelClient
 
     /**
      * @param  array<int, array<string, mixed>>  $messages
-     * @param  array<string, mixed>  $options  is_test, sender_id
+     * @param  array<string, mixed>  $options  is_test (a label only — still sent and charged), sender_id (ignored: the gateway always sends as NUGSOFT)
      * @return array<string, mixed>
      */
     public function sendBatch(array $messages, array $options = []): array

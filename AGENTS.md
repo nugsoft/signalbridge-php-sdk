@@ -20,8 +20,8 @@ The base URL defaults to the production gateway
 environment, and always include the `/api` suffix — without it every call 404s
 and the SDK reports "API endpoint not found".
 
-Recipients are international format without a `+` (`256700000000`). Sender IDs are
-at most 11 characters and must be registered with the vendor. SMS bodies are
+Recipients are international format without a `+` (`256700000000`). Do not set a sender ID:
+the gateway sends everything as `NUGSOFT` and ignores `sender_id`. SMS bodies are
 capped at 1000 characters, WhatsApp at 4096. `scheduled_at` must be in the future.
 
 ## Never retry a send
@@ -59,8 +59,9 @@ $client = new SignalBridgeClient(
 );
 ```
 
-For a manual check against the real gateway, pass `'is_test' => true` and use a
-number you control.
+There is no test mode. `'is_test' => true` only labels a message — it is still
+delivered and charged. For a manual check against the real gateway, use a number
+you control.
 
 ## Never calculate cost yourself
 
