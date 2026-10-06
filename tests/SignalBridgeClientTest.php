@@ -211,6 +211,26 @@ class SignalBridgeClientTest extends TestCase
         ];
     }
 
+    public function test_a_missing_resource_reports_what_the_gateway_said(): void
+    {
+        $client = $this->client([new Response(404, [], '{"success":false,"message":"Message not found."}')]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessage('Message not found.');
+
+        $client->getMessageStatus(999);
+    }
+
+    public function test_a_404_that_is_not_from_the_gateway_points_at_the_base_url(): void
+    {
+        $client = $this->client([new Response(404, [], '<html>Not Found</html>')]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessageMatches('/Verify the base URL/');
+
+        $client->getMessageStatus(999);
+    }
+
     public function test_insufficient_balance_carries_the_figures(): void
     {
         $client = $this->client([

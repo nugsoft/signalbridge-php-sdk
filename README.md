@@ -377,7 +377,7 @@ $result = $client->sendSms(
     message: 'Your message here',        // Required: Message content (max 1000 chars)
     options: [
         'metadata' => [],                 // Optional: Custom data
-        'is_test' => false,               // Optional: Test mode flag
+        'is_test' => false,               // Optional: a label only — still sent and charged
         'scheduled_at' => '2025-12-01...' // Optional: ISO 8601 datetime
     ]
 );
