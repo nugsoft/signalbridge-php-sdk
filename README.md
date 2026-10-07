@@ -307,20 +307,74 @@ raises as `InsufficientPermissionsException`:
 | `webhooks:read` | `listWebhooks()`, `getWebhook()` |
 | `webhooks:write` | `createWebhook()`, `updateWebhook()`, `deleteWebhook()`, `regenerateWebhookSecret()` |
 | `export:read` | `exportMessages()`, `exportTransactions()` |
+| `whatsapp:send` | `whatsapp()->sendTemplate()`, `send()`, `sendFlow()` |
+| `whatsapp:templates` | `whatsapp()->listTemplates()`, `getTemplate()`, `createTemplate()`, `deleteTemplate()` |
+| `whatsapp:flows` | `whatsapp()->listFlows()`, `createFlow()`, `updateFlow()`, `publishFlow()`, … |
+| `whatsapp:read` | `whatsapp()->received()`, `getReceived()`, `downloadMedia()` |
 
-> `whatsapp:send`, `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the WhatsApp and mobile money channels are unreleased, so reaching either needs a full-access (`*`) token.
+> `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the mobile money channel is unreleased, so reaching it needs a full-access (`*`) token.
 
 ### Channels
 
 ```php
 $client->sms();          // SmsClient — send, sendBatch, status, messages
-$client->whatsapp();     // WhatsAppClient — send, sendTemplate
+$client->whatsapp();     // WhatsAppClient — templates, free text, Flows, received messages
 $client->mobileMoney();  // MobileMoneyClient — initiate, verify
 $client->ussd();         // UssdClient — planned, not live on the gateway yet
 ```
 
 The flat methods (`sendSms()`, `sendBatch()`, …) are kept and proxy to the
 channels, so existing code keeps working.
+
+### WhatsApp
+
+WhatsApp only lets a business **start** a conversation with a **template** it has
+approved: submit one, wait for approval, then send it as often as you like. Free text
+and Flows are delivered only within **24 hours of the person's last message to you**.
+SignalBridge holds every WhatsApp credential and does all of WhatsApp's encryption.
+
+```php
+$whatsapp = $client->whatsapp();
+
+// Once: submit a template. A template.approved webhook arrives when WhatsApp approves it.
+$whatsapp->createTemplate([
+    'name' => 'fee_reminder',
+    'category' => 'utility',   // utility | marketing | authentication
+    'body' => 'Hello {{1}}, your fee balance is {{2}}. Please pay by Friday.',
+    'examples' => ['John', 'UGX 50,000'],
+]);
+
+// Then send it — the variables as a plain list
+$whatsapp->sendTemplate('256700000000', 'fee_reminder', ['John', 'UGX 50,000']);
+
+// A template that starts with a document or image takes the file as a link
+$whatsapp->sendTemplate('256700000000', 'weekly_report', ['Kampala branch'], [
+    'header' => ['type' => 'document', 'url' => 'https://files.example.com/report.pdf', 'filename' => 'report.pdf'],
+]);
+
+// Within 24 hours of their last message: free text, or a Flow
+$whatsapp->send('256700000000', 'Thanks — we have received your payment.');
+$whatsapp->sendFlow('256700000000', 'spa_booking', 'Book your next session', 'Book now');
+
+// What customers sent you, and their files
+$whatsapp->received(['since' => '2026-10-07T00:00:00+03:00']);
+$bytes = $whatsapp->downloadMedia($receivedMessageId);
+```
+
+**Flows** are forms customers fill in inside WhatsApp. Create one from the JSON
+WhatsApp's Flow Builder exports with `createFlow(['name' => …, 'categories' => […],
+'flow_json' => …, 'endpoint_url' => …])`, then `publishFlow($id)`. Answers arrive as
+a `flow.completed` webhook. If the Flow fetches live data, SignalBridge decrypts
+WhatsApp's calls and posts them to your `endpoint_url` as plain JSON, signed with the
+`endpoint_secret` returned when you created it. Verify with
+`WebhookSignature::verifyCurrentRequest($secret)` and reply with the next screen as
+JSON, e.g. `{"screen": "SLOTS", "data": {"slots": ["10:00", "11:00"]}}`, within a few
+seconds.
+
+WhatsApp webhook events: `message.sent`, `message.delivered`, `message.read`,
+`message.failed`, `message.received`, `flow.completed`, `template.approved`,
+`template.rejected`, `template.paused`, `template.disabled`. Template and Flow events
+are not in the default subscription.
 
 ### Delivery status
 

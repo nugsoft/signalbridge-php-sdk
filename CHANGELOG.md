@@ -4,7 +4,23 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **WhatsApp, fully.** `sendTemplate()` now takes the template's variables as a
+  plain list, with `header` for templates that start with a document, image or
+  video, and `flow` data for a template's Flow button. New: `sendFlow()`;
+  `listTemplates()`, `getTemplate()`, `createTemplate()`, `deleteTemplate()`;
+  `listFlows()`, `getFlow()`, `createFlow()`, `updateFlow()`, `publishFlow()`,
+  `regenerateFlowSecret()`, `deleteFlow()`; `received()`, `getReceived()` and
+  `downloadMedia()` for what customers send you. SignalBridge holds every
+  WhatsApp credential and does WhatsApp's Flow encryption, so none of this
+  needs Meta access. Flow data calls forwarded to your endpoint verify with the
+  existing webhook signature helper.
+
 ### Changed
+- `sendTemplate()`'s third argument is now the variables
+  (`['John', 'UGX 50,000']`), not Meta's `components` structure — the gateway
+  builds that. Passing the old structure fails with an explanation. WhatsApp
+  was unreleased on the gateway, so no working integration relied on it.
 - **`sender_id` no longer has any effect.** The gateway now sends every message
   as `NUGSOFT`, the only sender ID registered with its vendors, and ignores any
   `sender_id` it is given. The option is still accepted so existing calls keep
