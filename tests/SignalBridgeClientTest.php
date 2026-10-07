@@ -314,14 +314,74 @@ class SignalBridgeClientTest extends TestCase
         $client->whatsapp()->send('256700000000', 'Hello');
         $this->assertSame('https://gateway.test/api/whatsapp/send', (string) $this->lastRequest()->getUri());
 
-        $client->whatsapp()->sendTemplate('256700000000', 'order_confirmation', [
-            ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => 'John']]],
+        $client->whatsapp()->sendTemplate('256700000000', 'fee_reminder', ['John', 'UGX 50,000'], [
+            'header' => ['type' => 'document', 'url' => 'https://files.example.com/r.pdf', 'filename' => 'r.pdf'],
         ]);
 
         $body = json_decode((string) $this->lastRequest()->getBody(), true);
 
-        $this->assertSame('order_confirmation', $body['template']);
-        $this->assertSame('en_US', $body['language']);
+        $this->assertSame('fee_reminder', $body['template']);
+        $this->assertSame(['John', 'UGX 50,000'], $body['variables']);
+        $this->assertSame('document', $body['header']['type']);
+        $this->assertArrayNotHasKey('components', $body);
+    }
+
+    public function test_the_old_components_structure_is_refused_with_an_explanation(): void
+    {
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessageMatches('/plain list/');
+
+        $this->client()->whatsapp()->sendTemplate('256700000000', 'order_confirmation', [
+            ['type' => 'body', 'parameters' => [['type' => 'text', 'text' => 'John']]],
+        ]);
+    }
+
+    public function test_a_flow_is_sent_as_an_interactive_message(): void
+    {
+        $client = $this->client();
+
+        $client->whatsapp()->sendFlow('256700000000', 'spa_booking', 'Book your next session', 'Book now', ['screen' => 'BOOKING']);
+
+        $body = json_decode((string) $this->lastRequest()->getBody(), true);
+
+        $this->assertSame(['name' => 'spa_booking', 'body' => 'Book your next session', 'button' => 'Book now', 'screen' => 'BOOKING'], $body['flow']);
+    }
+
+    public function test_whatsapp_templates_flows_and_received_messages_hit_the_right_routes(): void
+    {
+        $ok = fn () => new Response(200, [], '{"success":true}');
+        $client = $this->client([$ok(), $ok(), $ok(), $ok(), $ok(), $ok(), $ok(), $ok(), new Response(200, [], '%PDF-1.4')]);
+        $whatsapp = $client->whatsapp();
+
+        $calls = [
+            fn () => $whatsapp->createTemplate(['name' => 'fee_reminder']),
+            fn () => $whatsapp->listTemplates('approved'),
+            fn () => $whatsapp->getTemplate(4, true),
+            fn () => $whatsapp->deleteTemplate(4),
+            fn () => $whatsapp->createFlow(['name' => 'spa_booking']),
+            fn () => $whatsapp->updateFlow(3, ['endpoint_url' => 'https://spa.example.com/flow']),
+            fn () => $whatsapp->publishFlow(3),
+            fn () => $whatsapp->received(['since' => '2026-10-07']),
+        ];
+
+        $expected = [
+            ['POST', 'https://gateway.test/api/whatsapp/templates'],
+            ['GET', 'https://gateway.test/api/whatsapp/templates?status=approved'],
+            ['GET', 'https://gateway.test/api/whatsapp/templates/4?refresh=1'],
+            ['DELETE', 'https://gateway.test/api/whatsapp/templates/4'],
+            ['POST', 'https://gateway.test/api/whatsapp/flows'],
+            ['PUT', 'https://gateway.test/api/whatsapp/flows/3'],
+            ['POST', 'https://gateway.test/api/whatsapp/flows/3/publish'],
+            ['GET', 'https://gateway.test/api/whatsapp/received?since=2026-10-07'],
+        ];
+
+        foreach ($calls as $index => $call) {
+            $call();
+            $this->assertSame($expected[$index], [$this->lastRequest()->getMethod(), (string) $this->lastRequest()->getUri()]);
+        }
+
+        $this->assertSame('%PDF-1.4', $whatsapp->downloadMedia(7));
+        $this->assertSame('https://gateway.test/api/whatsapp/received/7/media', (string) $this->lastRequest()->getUri());
     }
 
     public function test_mobile_money_sends_the_note_the_gateway_reads(): void
