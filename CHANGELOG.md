@@ -4,6 +4,13 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Agent guide.** `AGENTS.md` now sends agents to the SignalBridge MCP server to
+  read the account and check a send before writing code for it. It also lists
+  the WhatsApp token abilities (they can be granted now), shows how to send a
+  template instead of warning against it, gives every webhook event, and says
+  not to rely on their order: `message.sent` can be skipped.
+
 ### Added
 - **WhatsApp, fully.** `sendTemplate()` now takes the template's variables as a
   plain list, with `header` for templates that start with a document, image or
