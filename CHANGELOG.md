@@ -4,6 +4,21 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
+  image, document, video, audio (a voice note) or sticker from a public https
+  link, with a caption or file name where WhatsApp allows one.
+  `sendButtons()` sends up to 3 reply buttons, keyed by your ids;
+  `sendList()` a list of up to 10 options; `sendLinkButton()` a button that
+  opens a link. Like free text, all are delivered only within 24 hours of the
+  person's last message. A tap arrives as `message.received` with
+  `content.reply_id` (your id), `content.reply_type` and
+  `reply_to_message_id`. Needs the gateway's media and interactive release.
+
+### Changed
+- README: every webhook event is listed, including
+  `message.permanently_failed`, with a note that they can arrive out of order.
+
 ### Changed
 - **Agent guide: setting up through the MCP server.** The guide now covers the
   server's setup tools: tokens that cannot send, webhooks, WhatsApp templates
