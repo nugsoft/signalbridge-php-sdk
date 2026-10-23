@@ -4,6 +4,10 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+- The status examples show `read_at`: a WhatsApp message that was opened
+  stays `delivered`, and `read_at` says when.
+
 ### Added
 - **Sandbox.** `SignalBridgeClient::sandbox($token)` talks to the sandbox —
   the same API with every provider simulated — and `isSandbox()` says which
