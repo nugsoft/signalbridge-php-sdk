@@ -17,6 +17,7 @@ use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
 use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
 use Nugsoft\SignalBridge\SignalBridgeClient;
+use Nugsoft\SignalBridge\Support\MagicNumbers;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -509,5 +510,60 @@ class SignalBridgeClientTest extends TestCase
         $this->assertSame('https://gateway.test/api/balance/add-credit', (string) $this->lastRequest()->getUri());
         // json_encode writes 10000.0 as 10000, so compare the decoded value loosely.
         $this->assertEquals(['amount' => 10000, 'currency' => 'UGX', 'description' => 'Monthly top-up'], $body);
+    }
+
+    public function test_a_sandbox_client_talks_to_the_sandbox(): void
+    {
+        $client = SignalBridgeClient::sandbox('sandbox-token', logging: false, httpClient: new HttpClient(['handler' => HandlerStack::create(new MockHandler([new Response(200, [], '{}')]))]));
+
+        $this->assertTrue($client->isSandbox());
+        $this->assertFalse($this->client()->isSandbox());
+    }
+
+    public function test_the_sandbox_tools_hit_their_routes(): void
+    {
+        $client = $this->client([new Response(200, [], '{}'), new Response(201, [], '{}'), new Response(200, [], '{}'), new Response(200, [], '{}')], SignalBridgeClient::SANDBOX_URL);
+        $tools = $client->sandboxTools();
+
+        $tools->magicNumbers();
+        $this->assertSame('GET', $this->lastRequest()->getMethod());
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox', (string) $this->lastRequest()->getUri());
+
+        $tools->customerMessage(MagicNumbers::DELIVERED, ['type' => 'interactive', 'reply_to_message_id' => 42, 'reply_id' => 'confirm_42']);
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/whatsapp/customer-message', (string) $this->lastRequest()->getUri());
+        $this->assertSame(['from' => '256700000001', 'type' => 'interactive', 'reply_to_message_id' => 42, 'reply_id' => 'confirm_42'], json_decode((string) $this->lastRequest()->getBody(), true));
+
+        $tools->setMessageStatus(42, 'read');
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/messages/42/status', (string) $this->lastRequest()->getUri());
+        $this->assertSame(['status' => 'read'], json_decode((string) $this->lastRequest()->getBody(), true));
+
+        $tools->addCredit();
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/credit', (string) $this->lastRequest()->getUri());
+    }
+
+    public function test_the_sandbox_tools_on_live_say_where_they_live(): void
+    {
+        $client = $this->client([new Response(404, [], '{"message":"Not Found"}')]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessageMatches('/only in the sandbox/');
+
+        $client->sandboxTools()->addCredit();
+    }
+
+    public function test_a_message_that_is_not_yours_is_still_reported_as_such(): void
+    {
+        $client = $this->client([new Response(404, [], '{"success":false,"message":"Message not found."}')], SignalBridgeClient::SANDBOX_URL);
+
+        $this->expectExceptionMessage('Message not found.');
+
+        $client->sandboxTools()->setMessageStatus(99, 'delivered');
+    }
+
+    public function test_an_unknown_sandbox_status_is_refused_before_sending(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->client()->sandboxTools()->setMessageStatus(1, 'lost');
     }
 }

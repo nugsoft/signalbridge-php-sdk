@@ -5,6 +5,15 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Sandbox.** `SignalBridgeClient::sandbox($token)` talks to the sandbox —
+  the same API with every provider simulated — and `isSandbox()` says which
+  you have. `Support\MagicNumbers` names the numbers that drive a message down
+  each path. `sandboxTools()` simulates a customer's WhatsApp message
+  (`customerMessage()`), moves a message to an outcome (`setMessageStatus()`),
+  adds test credit (`addCredit()`) and lists the numbers (`magicNumbers()`).
+  Called on live, the tools say they exist only in the sandbox.
+
+### Added
 - **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
   image, document, video, audio (a voice note) or sticker from a public https
   link, with a caption or file name where WhatsApp allows one.
