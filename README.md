@@ -94,6 +94,50 @@ $result = $client->sendSms(
 echo "Message sent! ID: {$result['data']['message_id']}\n";
 ```
 
+## Sandbox
+
+Build and test against the **sandbox**: the same API with every provider
+simulated. Nothing reaches a real phone or wallet, and the credit is free. Sign
+up at https://sandbox.signal-bridge.nugsoftapps.net/register and create a token
+there — sandbox accounts and tokens are separate from live ones.
+
+```php
+use Nugsoft\SignalBridge\SignalBridgeClient;
+use Nugsoft\SignalBridge\Support\MagicNumbers;
+
+$client = SignalBridgeClient::sandbox(getenv('SIGNALBRIDGE_TOKEN'));   // a sandbox token
+$client->isSandbox();   // true
+
+// Magic numbers drive a message down each path your code handles
+$client->sendSms(MagicNumbers::DELIVERED, 'Hello');        // delivered within seconds
+$client->sendSms(MagicNumbers::FAILED, 'Hello');           // accepted, then failed
+$client->whatsapp()->send(MagicNumbers::OUTSIDE_WINDOW, 'Hi'); // fails: outside the 24-hour window
+
+// The sandbox's tools
+$tools = $client->sandboxTools();
+$tools->customerMessage(MagicNumbers::DELIVERED, ['text' => 'Thanks!']);   // a customer's WhatsApp reply
+$tools->customerMessage(MagicNumbers::DELIVERED, [                          // a tap on your buttons
+    'type' => 'interactive', 'reply_to_message_id' => $messageId, 'reply_id' => 'confirm_4821',
+]);
+$tools->setMessageStatus($messageId, 'delivered');   // or failed, or read (WhatsApp)
+$tools->addCredit();                                 // more test credit
+$tools->magicNumbers();                              // every number and what it does
+```
+
+| `MagicNumbers::` | Does |
+|---|---|
+| `DELIVERED` | Delivered within seconds — as is any number not listed |
+| `FAILED` | Accepted, then failed (WhatsApp refunds it; an SMS is not refunded, as on live) |
+| `NO_REPORT` | Stays `sent`: no outcome ever comes |
+| `REJECTED` | Refused by every provider: `permanently_failed` and refunded |
+| `SLOW` | Delivered after a minute |
+| `READ` | WhatsApp: delivered, then read |
+| `OUTSIDE_WINDOW` | WhatsApp: anything but a template fails (Meta 131047) and is refunded |
+
+Webhooks are real in the sandbox: point one at your endpoint to receive signed
+events. To go live, switch to `new SignalBridgeClient($liveToken)` with a live
+token.
+
 ## Getting Your API Token
 
 Contact your system administrator or generate a token via cURL:
