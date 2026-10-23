@@ -384,22 +384,114 @@ class SignalBridgeClientTest extends TestCase
         $this->assertSame('https://gateway.test/api/whatsapp/received/7/media', (string) $this->lastRequest()->getUri());
     }
 
-    public function test_mobile_money_sends_the_note_the_gateway_reads(): void
+    /**
+     * The gateway's transaction, as initiate() and verify() return it.
+     *
+     * @return array<string, mixed>
+     */
+    private function mobileMoneyTransaction(array $overrides = []): array
+    {
+        return [
+            'reference' => '0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d',
+            'direction' => 'collection',
+            'status' => 'pending',
+            'status_message' => 'Request is being processed',
+            'phone' => '256700000000',
+            'amount' => '5000.00',
+            'currency' => 'UGX',
+            ...$overrides,
+        ];
+    }
+
+    public function test_mobile_money_sends_only_what_the_gateway_reads_and_returns_its_reference(): void
+    {
+        $client = $this->client([new Response(202, [], json_encode(['success' => true, 'data' => $this->mobileMoneyTransaction()]))]);
+
+        $tx = $client->mobileMoney()->initiate('256700000000', 5000, 'ugx', [
+            'description' => 'Invoice payment',
+            'callback_url' => 'https://example.test/momo',
+        ]);
+
+        $this->assertSame('0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d', $tx['data']['reference']);
+        $this->assertSame(
+            ['phone' => '256700000000', 'amount' => 5000, 'currency' => 'UGX', 'note' => 'Invoice payment'],
+            json_decode((string) $this->lastRequest()->getBody(), true)
+        );
+    }
+
+    public function test_mobile_money_refuses_a_reference_of_your_own(): void
     {
         $client = $this->client();
 
-        $client->mobileMoney()->initiate('256700000000', 5000, 'ugx', [
-            'reference' => 'INV-1',
-            'description' => 'Invoice payment',
-        ]);
+        try {
+            $client->mobileMoney()->initiate('256700000000', 5000, 'UGX', ['reference' => 'INV-1']);
+            $this->fail('A reference of the caller\'s own was accepted.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('data.reference', $e->getMessage());
+        }
 
-        $body = json_decode((string) $this->lastRequest()->getBody(), true);
+        $this->assertSame([], $this->history);
+    }
 
-        $this->assertSame('Invoice payment', $body['note']);
-        $this->assertSame('UGX', $body['currency']);
-        $this->assertSame('INV-1', $body['reference']);
-        $this->assertArrayNotHasKey('description', $body);
-        $this->assertArrayNotHasKey('callback_url', $body);
+    public function test_mobile_money_refuses_a_note_longer_than_the_gateway_takes(): void
+    {
+        $client = $this->client();
+
+        $this->expectException(ValidationException::class);
+
+        $client->mobileMoney()->initiate('256700000000', 5000, 'UGX', ['note' => str_repeat('x', 101)]);
+    }
+
+    public function test_mobile_money_switched_off_is_reported_as_unavailable(): void
+    {
+        $client = $this->client([new Response(403, [], json_encode(['success' => false, 'message' => 'Mobile money collections are not available yet.']))]);
+
+        $this->expectException(ServiceUnavailableException::class);
+        $this->expectExceptionMessage('Mobile money collections are not available yet.');
+
+        $client->mobileMoney()->initiate('256700000000', 5000);
+    }
+
+    public function test_mobile_money_without_the_ability_is_still_a_permissions_error(): void
+    {
+        $client = $this->client([new Response(403, [], json_encode([
+            'success' => false,
+            'message' => 'This API token does not have permission to perform this action. Required ability: mobile-money:send.',
+        ]))]);
+
+        $this->expectException(InsufficientPermissionsException::class);
+
+        $client->mobileMoney()->initiate('256700000000', 5000);
+    }
+
+    public function test_a_refused_payment_says_why_and_keeps_the_transaction(): void
+    {
+        $client = $this->client([new Response(422, [], json_encode([
+            'success' => false,
+            'message' => 'The payment request was refused.',
+            'data' => $this->mobileMoneyTransaction(['status' => 'failed', 'status_message' => 'Amount must be at least 500']),
+        ]))]);
+
+        try {
+            $client->mobileMoney()->initiate('256700000000', 100);
+            $this->fail('A refused payment did not throw.');
+        } catch (ValidationException $e) {
+            $this->assertSame('The payment request was refused: Amount must be at least 500', $e->getMessage());
+            $this->assertSame('0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d', $e->getData()['reference']);
+        }
+    }
+
+    public function test_mobile_money_is_verified_by_its_reference(): void
+    {
+        $client = $this->client([new Response(200, [], json_encode(['success' => true, 'data' => $this->mobileMoneyTransaction(['status' => 'completed'])]))]);
+
+        $result = $client->mobileMoney()->verify('0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d');
+
+        $this->assertSame('completed', $result['data']['status']);
+        $this->assertSame(
+            'https://gateway.test/api/mobile-money/transactions/0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d',
+            (string) $this->lastRequest()->getUri()
+        );
     }
 
     public function test_disbursement_reports_that_it_is_unavailable(): void

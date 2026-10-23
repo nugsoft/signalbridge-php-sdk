@@ -263,13 +263,18 @@ administrators.
 
 ```php
 $client->whatsapp()->send('256700000000', 'Your order has shipped');
-$client->mobileMoney()->initiate('256700000000', 15000, 'UGX', [
-    'reference' => 'INV-1',
-    'note' => 'Invoice payment',   // shown to the payer
+$tx = $client->mobileMoney()->initiate('256700000000', 15000, 'UGX', [
+    'note' => 'Invoice INV-1',   // shown to the payer, at most 100 characters
 ]);
+$reference = $tx['data']['reference'];
 ```
 
-Poll `mobileMoney()->verify($transactionId)` for the result.
+SignalBridge assigns the `reference`: passing your own throws. Store the
+returned `data.reference` and poll `mobileMoney()->verify($reference)` for the
+result; there are no mobile money webhooks yet. Until the gateway switches
+collections on, `initiate()` throws `ServiceUnavailableException` — do not treat
+that as a token or client problem. A payment the provider refused throws
+`ValidationException` whose `getData()` is the transaction.
 
 Start a conversation with an approved template. Free text
 (`whatsapp()->send()`) is delivered only within 24 hours of the customer's last
@@ -288,8 +293,9 @@ connected, check the request with `validate_whatsapp` first.
 ## Not available
 
 `mobileMoney()->disburse()` throws `ServiceUnavailableException`; the gateway
-exposes no payout endpoint. `ussd()` is likewise unreleased. Collecting payments
-with `mobileMoney()->initiate()` works normally.
+exposes no payout endpoint. `ussd()` is likewise unreleased. Collecting with
+`mobileMoney()->initiate()` is built but switched off on the gateway for now, so
+it throws `ServiceUnavailableException` too.
 
 ## Do not log message bodies or recipient numbers
 
