@@ -460,12 +460,16 @@ are not in the default subscription.
 // rarely needed, because the gateway polls vendors in the background.
 $status = $client->getMessageStatus($messageId);
 echo $status['data']['status'];      // queued, sent, delivered, failed …
+echo $status['data']['read_at'];     // WhatsApp: when it was opened, or null
 
 // A whole batch, by the ids sendBatch() returned. 'summary' counts the entire
 // filtered set rather than the current page.
 $messages = $client->getMessages(['ids' => [11, 12, 13]]);
 print_r($messages['summary']['by_status']);
 ```
+
+A WhatsApp message that was opened stays `delivered` — `read` is not a status.
+`read_at` says when, and the `message.read` webhook tells you as it happens.
 
 ### Webhooks
 
