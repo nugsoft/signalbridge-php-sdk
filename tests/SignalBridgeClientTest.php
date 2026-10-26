@@ -17,6 +17,7 @@ use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
 use Nugsoft\SignalBridge\Exceptions\UnauthorizedException;
 use Nugsoft\SignalBridge\Exceptions\ValidationException;
 use Nugsoft\SignalBridge\SignalBridgeClient;
+use Nugsoft\SignalBridge\Support\MagicNumbers;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -49,6 +50,11 @@ class SignalBridgeClientTest extends TestCase
     private function lastRequest(): Request
     {
         return $this->history[count($this->history) - 1]['request'];
+    }
+
+    private function lastRequestOrNull(): ?Request
+    {
+        return $this->history === [] ? null : $this->lastRequest();
     }
 
     public function test_it_keeps_the_api_prefix_on_every_path(): void
@@ -347,6 +353,88 @@ class SignalBridgeClientTest extends TestCase
         $this->assertSame(['name' => 'spa_booking', 'body' => 'Book your next session', 'button' => 'Book now', 'screen' => 'BOOKING'], $body['flow']);
     }
 
+    public function test_a_file_is_sent_on_its_own(): void
+    {
+        $this->client()->whatsapp()->sendMedia('256700000000', 'document', 'https://files.example.com/report.pdf', [
+            'caption' => 'Term 2 report',
+            'filename' => 'report.pdf',
+        ]);
+
+        $body = json_decode((string) $this->lastRequest()->getBody(), true);
+
+        $this->assertSame('https://gateway.test/api/whatsapp/send', (string) $this->lastRequest()->getUri());
+        $this->assertSame(['type' => 'document', 'url' => 'https://files.example.com/report.pdf', 'caption' => 'Term 2 report', 'filename' => 'report.pdf'], $body['media']);
+        $this->assertArrayNotHasKey('message', $body);
+    }
+
+    public function test_a_file_of_an_unknown_type_or_on_plain_http_is_refused_before_sending(): void
+    {
+        foreach ([['gif', 'https://example.com/a.gif'], ['image', 'http://example.com/a.jpg']] as [$type, $url]) {
+            try {
+                $this->client()->whatsapp()->sendMedia('256700000000', $type, $url);
+                $this->fail("{$type} {$url} was not refused");
+            } catch (ValidationException) {
+                $this->assertNull($this->lastRequestOrNull());
+            }
+        }
+    }
+
+    public function test_reply_buttons_are_sent_with_their_ids_and_a_text_header(): void
+    {
+        $this->client()->whatsapp()->sendButtons('256700000000', 'Can you make it?', [
+            'confirm_4821' => 'Confirm',
+            'reschedule_4821' => 'Reschedule',
+        ], ['header' => 'Tomorrow, 10:00', 'footer' => 'Acme Clinic']);
+
+        $body = json_decode((string) $this->lastRequest()->getBody(), true);
+
+        $this->assertSame([
+            'type' => 'buttons',
+            'body' => 'Can you make it?',
+            'buttons' => [['id' => 'confirm_4821', 'title' => 'Confirm'], ['id' => 'reschedule_4821', 'title' => 'Reschedule']],
+            'header' => ['type' => 'text', 'text' => 'Tomorrow, 10:00'],
+            'footer' => 'Acme Clinic',
+        ], $body['interactive']);
+    }
+
+    public function test_more_than_three_buttons_are_refused_before_sending(): void
+    {
+        $this->expectException(ValidationException::class);
+        $this->expectExceptionMessageMatches('/sendList/');
+
+        $this->client()->whatsapp()->sendButtons('256700000000', 'Pick', ['a' => 'A', 'b' => 'B', 'c' => 'C', 'd' => 'D']);
+    }
+
+    public function test_a_list_and_a_link_button_are_sent_as_interactive_messages(): void
+    {
+        $client = $this->client([new Response(200, [], '{}'), new Response(200, [], '{}')]);
+
+        $client->whatsapp()->sendList('256700000000', 'Which branch?', 'Choose a branch', [
+            ['title' => 'Kampala', 'rows' => [['id' => 'kla_central', 'title' => 'Central', 'description' => 'Open until 8pm']]],
+        ]);
+
+        $list = json_decode((string) $this->lastRequest()->getBody(), true)['interactive'];
+        $this->assertSame('list', $list['type']);
+        $this->assertSame('Choose a branch', $list['button']);
+        $this->assertSame('kla_central', $list['sections'][0]['rows'][0]['id']);
+
+        $client->whatsapp()->sendLinkButton('256700000000', 'Your invoice is ready.', 'Pay now', 'https://pay.example.com/inv/42');
+
+        $this->assertSame(
+            ['type' => 'cta_url', 'body' => 'Your invoice is ready.', 'button' => 'Pay now', 'url' => 'https://pay.example.com/inv/42'],
+            json_decode((string) $this->lastRequest()->getBody(), true)['interactive']
+        );
+    }
+
+    public function test_a_list_of_more_than_ten_options_is_refused_before_sending(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->client()->whatsapp()->sendList('256700000000', 'Pick', 'Open', [
+            ['title' => 'All', 'rows' => array_map(fn ($i) => ['id' => "r{$i}", 'title' => "R{$i}"], range(1, 11))],
+        ]);
+    }
+
     public function test_whatsapp_templates_flows_and_received_messages_hit_the_right_routes(): void
     {
         $ok = fn () => new Response(200, [], '{"success":true}');
@@ -514,5 +602,60 @@ class SignalBridgeClientTest extends TestCase
         $this->assertSame('https://gateway.test/api/balance/add-credit', (string) $this->lastRequest()->getUri());
         // json_encode writes 10000.0 as 10000, so compare the decoded value loosely.
         $this->assertEquals(['amount' => 10000, 'currency' => 'UGX', 'description' => 'Monthly top-up'], $body);
+    }
+
+    public function test_a_sandbox_client_talks_to_the_sandbox(): void
+    {
+        $client = SignalBridgeClient::sandbox('sandbox-token', logging: false, httpClient: new HttpClient(['handler' => HandlerStack::create(new MockHandler([new Response(200, [], '{}')]))]));
+
+        $this->assertTrue($client->isSandbox());
+        $this->assertFalse($this->client()->isSandbox());
+    }
+
+    public function test_the_sandbox_tools_hit_their_routes(): void
+    {
+        $client = $this->client([new Response(200, [], '{}'), new Response(201, [], '{}'), new Response(200, [], '{}'), new Response(200, [], '{}')], SignalBridgeClient::SANDBOX_URL);
+        $tools = $client->sandboxTools();
+
+        $tools->magicNumbers();
+        $this->assertSame('GET', $this->lastRequest()->getMethod());
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox', (string) $this->lastRequest()->getUri());
+
+        $tools->customerMessage(MagicNumbers::DELIVERED, ['type' => 'interactive', 'reply_to_message_id' => 42, 'reply_id' => 'confirm_42']);
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/whatsapp/customer-message', (string) $this->lastRequest()->getUri());
+        $this->assertSame(['from' => '256700000001', 'type' => 'interactive', 'reply_to_message_id' => 42, 'reply_id' => 'confirm_42'], json_decode((string) $this->lastRequest()->getBody(), true));
+
+        $tools->setMessageStatus(42, 'read');
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/messages/42/status', (string) $this->lastRequest()->getUri());
+        $this->assertSame(['status' => 'read'], json_decode((string) $this->lastRequest()->getBody(), true));
+
+        $tools->addCredit();
+        $this->assertSame(SignalBridgeClient::SANDBOX_URL.'/sandbox/credit', (string) $this->lastRequest()->getUri());
+    }
+
+    public function test_the_sandbox_tools_on_live_say_where_they_live(): void
+    {
+        $client = $this->client([new Response(404, [], '{"message":"Not Found"}')]);
+
+        $this->expectException(SignalBridgeException::class);
+        $this->expectExceptionMessageMatches('/only in the sandbox/');
+
+        $client->sandboxTools()->addCredit();
+    }
+
+    public function test_a_message_that_is_not_yours_is_still_reported_as_such(): void
+    {
+        $client = $this->client([new Response(404, [], '{"success":false,"message":"Message not found."}')], SignalBridgeClient::SANDBOX_URL);
+
+        $this->expectExceptionMessage('Message not found.');
+
+        $client->sandboxTools()->setMessageStatus(99, 'delivered');
+    }
+
+    public function test_an_unknown_sandbox_status_is_refused_before_sending(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->client()->sandboxTools()->setMessageStatus(1, 'lost');
     }
 }

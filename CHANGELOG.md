@@ -4,6 +4,34 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 
 ## [Unreleased]
 
+### Documentation
+- The status examples show `read_at`: a WhatsApp message that was opened
+  stays `delivered`, and `read_at` says when.
+
+### Added
+- **Sandbox.** `SignalBridgeClient::sandbox($token)` talks to the sandbox —
+  the same API with every provider simulated — and `isSandbox()` says which
+  you have. `Support\MagicNumbers` names the numbers that drive a message down
+  each path. `sandboxTools()` simulates a customer's WhatsApp message
+  (`customerMessage()`), moves a message to an outcome (`setMessageStatus()`),
+  adds test credit (`addCredit()`) and lists the numbers (`magicNumbers()`).
+  Called on live, the tools say they exist only in the sandbox.
+
+### Added
+- **WhatsApp files, buttons and lists.** `whatsapp()->sendMedia()` sends an
+  image, document, video, audio (a voice note) or sticker from a public https
+  link, with a caption or file name where WhatsApp allows one.
+  `sendButtons()` sends up to 3 reply buttons, keyed by your ids;
+  `sendList()` a list of up to 10 options; `sendLinkButton()` a button that
+  opens a link. Like free text, all are delivered only within 24 hours of the
+  person's last message. A tap arrives as `message.received` with
+  `content.reply_id` (your id), `content.reply_type` and
+  `reply_to_message_id`. Needs the gateway's media and interactive release.
+
+### Changed
+- README: every webhook event is listed, including
+  `message.permanently_failed`, with a note that they can arrive out of order.
+
 ### Changed
 - **Mobile money follows the gateway's transaction reference.** The gateway now
   gives every mobile money transaction its own `reference` and records it before
