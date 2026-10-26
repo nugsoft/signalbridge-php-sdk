@@ -91,6 +91,23 @@ claude mcp add --transport http signalbridge https://signal-bridge.nugsoftapps.n
   --header "Authorization: Bearer AGENT_TOKEN"
 ```
 
+## Build against the sandbox
+
+Develop and test against the sandbox, where every provider is simulated and
+nothing reaches a real phone: `SignalBridgeClient::sandbox($sandboxToken)`. It
+needs a sandbox token, from an account at
+https://sandbox.signal-bridge.nugsoftapps.net/register — live tokens do not work
+there, nor sandbox tokens on live.
+
+- Drive each path with `Support\MagicNumbers` (`DELIVERED`, `FAILED`,
+  `NO_REPORT`, `REJECTED`, `SLOW`, `READ`, `OUTSIDE_WINDOW`) rather than real
+  numbers.
+- Simulate what a customer would do with `sandboxTools()->customerMessage()`,
+  and an outcome with `setMessageStatus()`.
+- Never put the sandbox URL or a magic number in production configuration. Read
+  the base URL and token from the environment, so switching to live is a
+  configuration change, not a code change.
+
 ## Never retry a send
 
 The gateway charges a message the moment it accepts one, and there is no
@@ -126,9 +143,8 @@ $client = new SignalBridgeClient(
 );
 ```
 
-There is no test mode. `'is_test' => true` only labels a message — it is still
-delivered and charged. For a manual check against the real gateway, use a number
-you control.
+`'is_test' => true` only labels a message — it is still delivered and charged.
+For a manual check, use the sandbox (see "Build against the sandbox").
 
 ## Never calculate cost yourself
 
@@ -224,6 +240,9 @@ Valid events are `message.sent`, `message.delivered`, `message.read`
 and `flow.completed` (what WhatsApp customers send), `template.approved`,
 `template.rejected`, `template.paused`, `template.disabled`, and `*` for all of
 them. The signing secret is returned once, when the webhook is created.
+
+A read WhatsApp message keeps the status `delivered`; `read` is not a status.
+Check `read_at` (null until opened) or listen for `message.read`.
 
 Update your records by `message_id` from whichever event arrives; never rely on
 their order:

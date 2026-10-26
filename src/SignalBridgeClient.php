@@ -6,6 +6,7 @@ use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\ClientInterface;
 use Nugsoft\SignalBridge\Channels\BaseChannelClient;
 use Nugsoft\SignalBridge\Channels\MobileMoney\MobileMoneyClient;
+use Nugsoft\SignalBridge\Channels\Sandbox\SandboxClient;
 use Nugsoft\SignalBridge\Channels\Sms\SmsClient;
 use Nugsoft\SignalBridge\Channels\Ussd\UssdClient;
 use Nugsoft\SignalBridge\Channels\WhatsApp\WhatsAppClient;
@@ -24,6 +25,12 @@ class SignalBridgeClient extends BaseChannelClient
 {
     public const DEFAULT_BASE_URL = 'https://signal-bridge.nugsoftapps.net/api';
 
+    /**
+     * The sandbox: the same API with every provider simulated, for building
+     * and testing. Its accounts and tokens are separate from live ones.
+     */
+    public const SANDBOX_URL = 'https://sandbox.signal-bridge.nugsoftapps.net/api';
+
     private ?SmsClient $smsChannel = null;
 
     private ?WhatsAppClient $whatsAppChannel = null;
@@ -31,6 +38,8 @@ class SignalBridgeClient extends BaseChannelClient
     private ?MobileMoneyClient $mobileMoneyChannel = null;
 
     private ?UssdClient $ussdChannel = null;
+
+    private ?SandboxClient $sandboxChannel = null;
 
     /**
      * @param  string  $token  An API token from the SignalBridge dashboard
@@ -61,6 +70,23 @@ class SignalBridgeClient extends BaseChannelClient
         );
     }
 
+    /**
+     * A client for the sandbox, with a sandbox token.
+     */
+    public static function sandbox(string $token, int $timeout = 30, bool $logging = true, ?ClientInterface $httpClient = null): self
+    {
+        return new self($token, self::SANDBOX_URL, $timeout, $logging, $httpClient);
+    }
+
+    /**
+     * Whether this client talks to the sandbox, where nothing reaches a real
+     * phone or wallet.
+     */
+    public function isSandbox(): bool
+    {
+        return $this->baseUrl === rtrim(self::SANDBOX_URL, '/');
+    }
+
     // -------------------------------------------------------------------------
     // Channel accessors
     // -------------------------------------------------------------------------
@@ -78,6 +104,15 @@ class SignalBridgeClient extends BaseChannelClient
     public function mobileMoney(): MobileMoneyClient
     {
         return $this->mobileMoneyChannel ??= new MobileMoneyClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
+    }
+
+    /**
+     * The sandbox's tools: simulate a customer's WhatsApp message, move a
+     * message to an outcome, add test credit. Only in the sandbox.
+     */
+    public function sandboxTools(): SandboxClient
+    {
+        return $this->sandboxChannel ??= new SandboxClient($this->baseUrl, $this->token, $this->timeout, $this->httpClient, $this->logging);
     }
 
     /**
