@@ -355,36 +355,53 @@ raises as `InsufficientPermissionsException`:
 | `whatsapp:templates` | `whatsapp()->listTemplates()`, `getTemplate()`, `createTemplate()`, `deleteTemplate()` |
 | `whatsapp:flows` | `whatsapp()->listFlows()`, `createFlow()`, `updateFlow()`, `publishFlow()`, … |
 | `whatsapp:read` | `whatsapp()->received()`, `getReceived()`, `downloadMedia()` |
-
-> `mobile-money:send` and `mobile-money:read` are not issuable at the moment: the mobile money channel is unreleased, so reaching it needs a full-access (`*`) token.
+| `mobile-money:send` | `mobileMoney()->initiate()` |
+| `mobile-money:read` | `mobileMoney()->verify()`, `mobileMoney()->balance()` |
 
 ### Channels
 
 ```php
 $client->sms();          // SmsClient — send, sendBatch, status, messages
 $client->whatsapp();     // WhatsAppClient — templates, free text, files, buttons and lists, Flows, received messages
-$client->mobileMoney();  // MobileMoneyClient — initiate, verify
+$client->mobileMoney();  // MobileMoneyClient — initiate, verify, balance
 $client->ussd();         // UssdClient — planned, not live on the gateway yet
 ```
 
-Mobile money collections are built but not switched on on the gateway yet;
-until they are, `initiate()` throws `ServiceUnavailableException`. Build against
-them like this:
+### Mobile money
+
+Ask your customers to pay you by mobile money. The payer approves a prompt on
+their phone and pays the network's fee on top. Once the payment completes, the
+amount less Nugsoft's collection fee joins your **mobile money balance** — kept
+apart from your SMS balance — and Nugsoft pays it out to the payout account
+your administrators save on the Balance page of the dashboard.
 
 ```php
 $tx = $client->mobileMoney()->initiate('256700000000', 15000, 'UGX', [
-    'note' => 'Invoice INV-1',   // shown to the payer, at most 100 characters
+    'note' => 'Invoice INV-1',                   // shown to the payer, at most 100 characters
+    'metadata' => ['tenant_id' => 'school-42'],  // yours, at most 20 keys, returned in webhooks
 ]);
 $reference = $tx['data']['reference'];   // SignalBridge's — store it
 
-$status = $client->mobileMoney()->verify($reference)['data']['status'];
-// 'pending' | 'processing' — ask again later; 'completed' — paid; 'failed' — see status_message
+$payment = $client->mobileMoney()->verify($reference)['data'];
+// status: 'pending' — ask again later
+//         'completed' — paid: 'fee' is Nugsoft's collection fee, 'net_amount' what reached you
+//         'failed' | 'cancelled' | 'rejected' — not paid; see 'status_message'
+
+$balances = $client->mobileMoney()->balance()['data'];
+// [['currency' => 'UGX', 'available' => '148500.00', 'held' => '52200.00', ...]]
 ```
 
-SignalBridge assigns the reference; passing your own in the options throws
-`ValidationException`. A payment the provider refused also throws
-`ValidationException`, with the reason in the message and the transaction in
-`getData()`.
+The amount is at least 500, in the gateway wallet's currency. Rather than
+polling, subscribe your webhook to `payment.completed` and `payment.failed`
+(not in the default subscription); each fires once, carrying the same fields
+and your `metadata`. SignalBridge assigns the reference; passing your own in
+the options throws `ValidationException`. A payment the provider refused also
+throws `ValidationException`, with the reason in the message and the
+transaction in `getData()`.
+
+Payouts are not made through the API: your administrators ask for them on the
+Balance page of the dashboard. `mobileMoney()->disburse()` is kept so existing
+code does not break, but it throws `ServiceUnavailableException` saying so.
 
 The flat methods (`sendSms()`, `sendBatch()`, …) are kept and proxy to the
 channels, so existing code keeps working.

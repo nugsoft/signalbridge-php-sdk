@@ -497,12 +497,13 @@ class SignalBridgeClientTest extends TestCase
 
         $tx = $client->mobileMoney()->initiate('256700000000', 5000, 'ugx', [
             'description' => 'Invoice payment',
+            'metadata' => ['tenant_id' => 'school-42'],
             'callback_url' => 'https://example.test/momo',
         ]);
 
         $this->assertSame('0b6f2c1e-7d3a-4a5b-9c8d-1e2f3a4b5c6d', $tx['data']['reference']);
         $this->assertSame(
-            ['phone' => '256700000000', 'amount' => 5000, 'currency' => 'UGX', 'note' => 'Invoice payment'],
+            ['phone' => '256700000000', 'amount' => 5000, 'currency' => 'UGX', 'note' => 'Invoice payment', 'metadata' => ['tenant_id' => 'school-42']],
             json_decode((string) $this->lastRequest()->getBody(), true)
         );
     }
@@ -561,7 +562,7 @@ class SignalBridgeClientTest extends TestCase
         ]))]);
 
         try {
-            $client->mobileMoney()->initiate('256700000000', 100);
+            $client->mobileMoney()->initiate('256700000000', 5000);
             $this->fail('A refused payment did not throw.');
         } catch (ValidationException $e) {
             $this->assertSame('The payment request was refused: Amount must be at least 500', $e->getMessage());
@@ -582,13 +583,54 @@ class SignalBridgeClientTest extends TestCase
         );
     }
 
-    public function test_disbursement_reports_that_it_is_unavailable(): void
+    public function test_mobile_money_refuses_an_amount_below_the_gateway_minimum(): void
     {
         $client = $this->client();
 
-        $this->expectException(ServiceUnavailableException::class);
+        try {
+            $client->mobileMoney()->initiate('256700000000', 499);
+            $this->fail('An amount below 500 was sent.');
+        } catch (ValidationException $e) {
+            $this->assertSame('Amount must be at least 500', $e->getMessage());
+        }
 
-        $client->mobileMoney()->disburse('256700000000', 5000);
+        $this->assertSame([], $this->history);
+    }
+
+    public function test_mobile_money_refuses_more_metadata_than_the_gateway_keeps(): void
+    {
+        $client = $this->client();
+
+        $this->expectException(ValidationException::class);
+
+        $client->mobileMoney()->initiate('256700000000', 5000, 'UGX', ['metadata' => array_fill_keys(range(1, 21), 'x')]);
+    }
+
+    public function test_mobile_money_balance_is_read(): void
+    {
+        $client = $this->client([new Response(200, [], json_encode(['success' => true, 'data' => [
+            ['currency' => 'UGX', 'available' => '148500.00', 'held' => '52200.00', 'updated_at' => '2026-10-26T11:02:13+03:00'],
+        ]]))]);
+
+        $balances = $client->mobileMoney()->balance()['data'];
+
+        $this->assertSame('148500.00', $balances[0]['available']);
+        $this->assertSame('GET', $this->lastRequest()->getMethod());
+        $this->assertSame('https://gateway.test/api/mobile-money/balance', (string) $this->lastRequest()->getUri());
+    }
+
+    public function test_disbursement_points_to_payouts_on_the_dashboard(): void
+    {
+        $client = $this->client();
+
+        try {
+            $client->mobileMoney()->disburse('256700000000', 5000);
+            $this->fail('disburse() did not throw.');
+        } catch (ServiceUnavailableException $e) {
+            $this->assertStringContainsString('Balance page of the SignalBridge dashboard', $e->getMessage());
+        }
+
+        $this->assertSame([], $this->history);
     }
 
     public function test_credit_requests_post_to_the_gateway(): void
