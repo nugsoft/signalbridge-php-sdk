@@ -367,6 +367,25 @@ $client->mobileMoney();  // MobileMoneyClient — initiate, verify
 $client->ussd();         // UssdClient — planned, not live on the gateway yet
 ```
 
+Mobile money collections are built but not switched on on the gateway yet;
+until they are, `initiate()` throws `ServiceUnavailableException`. Build against
+them like this:
+
+```php
+$tx = $client->mobileMoney()->initiate('256700000000', 15000, 'UGX', [
+    'note' => 'Invoice INV-1',   // shown to the payer, at most 100 characters
+]);
+$reference = $tx['data']['reference'];   // SignalBridge's — store it
+
+$status = $client->mobileMoney()->verify($reference)['data']['status'];
+// 'pending' | 'processing' — ask again later; 'completed' — paid; 'failed' — see status_message
+```
+
+SignalBridge assigns the reference; passing your own in the options throws
+`ValidationException`. A payment the provider refused also throws
+`ValidationException`, with the reason in the message and the transaction in
+`getData()`.
+
 The flat methods (`sendSms()`, `sendBatch()`, …) are kept and proxy to the
 channels, so existing code keeps working.
 

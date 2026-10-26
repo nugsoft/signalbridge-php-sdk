@@ -33,6 +33,24 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
   `message.permanently_failed`, with a note that they can arrive out of order.
 
 ### Changed
+- **Mobile money follows the gateway's transaction reference.** The gateway now
+  gives every mobile money transaction its own `reference` and records it before
+  the provider is called. `initiate()` returns it in `data.reference` (there is
+  no `data.transaction_id`), and `verify()` takes it. Passing `reference` in
+  `initiate()`'s options now throws `ValidationException` instead of being sent
+  and ignored, and a `note` over 100 characters is refused before sending.
+  **Breaking** for code that passed its own reference or read
+  `transaction_id`; mobile money has never been switched on, so no live
+  integration depends on either.
+- **Collections switched off are reported as such.** While the gateway has
+  mobile money collections switched off it answers 403 "Mobile money
+  collections are not available yet."; `initiate()` now throws
+  `ServiceUnavailableException` for it, where it threw `NoClientException`.
+- **A refused payment says why.** A payment the provider refused throws
+  `ValidationException` with the provider's reason in the message, and
+  `getData()` returns the transaction, reference included.
+
+### Changed
 - **Agent guide: setting up through the MCP server.** The guide now covers the
   server's setup tools: tokens that cannot send, webhooks, WhatsApp templates
   and Flows. It says which to use for each job, to put a secret they return
