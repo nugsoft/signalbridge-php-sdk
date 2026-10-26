@@ -261,6 +261,16 @@ if ($balance['available_balance'] < $estimatedCost) {
 }
 ```
 
+SMS and WhatsApp have a balance each, topped up separately: an SMS spends only
+the SMS balance, a WhatsApp message only the WhatsApp one. `getBalance()` reads
+the SMS balance; pass `'whatsapp'` for the other:
+
+```php
+$whatsApp = $client->getBalance('UGX', 'whatsapp')['data'];
+$whatsApp['whatsapp_prices'];      // ['marketing' => 120, 'utility' => 60, …]; null = not sendable yet
+$whatsApp['messages_available'];   // at the cheapest category
+```
+
 ### 5. Get Transaction History
 
 ```php
@@ -268,6 +278,7 @@ if ($balance['available_balance'] < $estimatedCost) {
 
 $transactions = $client->getTransactions([
     'type' => 'debit',
+    'channel' => 'sms',          // or 'whatsapp'; both when left out
     'start_date' => '2025-11-01',
     'end_date' => '2025-11-30',
     'per_page' => 50
@@ -603,6 +614,9 @@ $result = $client->sendBatch(
 ```php
 // Asks the administrators for a top-up. This never moves money by itself.
 $client->requestCredit(10000, 'UGX', 'Monthly top-up');
+
+// For the WhatsApp balance
+$client->requestCredit(10000, 'UGX', 'WhatsApp reminders', 'whatsapp');
 ```
 
 ### Get Balance

@@ -276,6 +276,12 @@ $balance['available_balance'];   // balance + credit limit
 $balance['segment_price'];       // pass to estimateCost()
 ```
 
+SMS and WhatsApp have a balance each, topped up separately, and each channel
+spends only its own: check the WhatsApp balance — `getBalance('UGX', 'whatsapp')`
+— before WhatsApp sends, not the SMS one. A WhatsApp price of `null` in
+`whatsapp_prices` means that category cannot be sent yet (the gateway answers
+503). `getTransactions()` and `requestCredit()` take the channel too.
+
 Clients cannot credit themselves: `requestCredit()` only notifies the
 administrators.
 

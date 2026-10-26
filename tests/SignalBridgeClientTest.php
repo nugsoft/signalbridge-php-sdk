@@ -646,6 +646,38 @@ class SignalBridgeClientTest extends TestCase
         $this->assertEquals(['amount' => 10000, 'currency' => 'UGX', 'description' => 'Monthly top-up'], $body);
     }
 
+    public function test_the_whatsapp_balance_is_read_and_topped_up_on_its_own(): void
+    {
+        $client = $this->client([
+            new Response(200, [], '{"success":true}'),
+            new Response(200, [], '{"success":true}'),
+            new Response(202, [], '{"success":true}'),
+        ]);
+
+        $client->getBalance('UGX', 'whatsapp');
+        $this->assertSame('https://gateway.test/api/balance?currency=UGX&channel=whatsapp', (string) $this->lastRequest()->getUri());
+
+        $client->getTransactions(['channel' => 'WhatsApp']);
+        $this->assertSame('https://gateway.test/api/balance/transactions?channel=whatsapp', (string) $this->lastRequest()->getUri());
+
+        $client->requestCredit(5000, 'UGX', null, 'whatsapp');
+        $this->assertEquals(['amount' => 5000, 'currency' => 'UGX', 'channel' => 'whatsapp'], json_decode((string) $this->lastRequest()->getBody(), true));
+    }
+
+    public function test_a_channel_with_no_balance_is_refused_before_sending(): void
+    {
+        $client = $this->client();
+
+        try {
+            $client->getBalance('UGX', 'ussd');
+            $this->fail('A balance channel that does not exist was sent.');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('sms, whatsapp', $e->getMessage());
+        }
+
+        $this->assertSame([], $this->history);
+    }
+
     public function test_a_sandbox_client_talks_to_the_sandbox(): void
     {
         $client = SignalBridgeClient::sandbox('sandbox-token', logging: false, httpClient: new HttpClient(['handler' => HandlerStack::create(new MockHandler([new Response(200, [], '{}')]))]));
