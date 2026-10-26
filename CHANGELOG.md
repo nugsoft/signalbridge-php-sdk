@@ -5,6 +5,14 @@ All notable changes to `signalbridge-php-sdk` will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **SMS and WhatsApp have separate balances on the gateway.** `getBalance()`
+  takes a channel — `getBalance('UGX', 'whatsapp')` reads the WhatsApp
+  balance, with `whatsapp_prices` and `messages_available`; it reads SMS when
+  left out, as before. `requestCredit()` takes the channel as its fourth
+  argument, and `getTransactions()` filters by `channel`. A channel other than
+  `sms` or `whatsapp` throws `ValidationException` before sending.
+
+### Added
 - **Mobile money is live on the gateway.** `mobileMoney()->balance()` reads
   your mobile money balance (`available` and `held`, per currency).
 - `initiate()` sends `metadata` (your own data, at most 20 keys), which the

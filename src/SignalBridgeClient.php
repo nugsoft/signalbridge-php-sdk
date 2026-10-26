@@ -11,6 +11,7 @@ use Nugsoft\SignalBridge\Channels\Sms\SmsClient;
 use Nugsoft\SignalBridge\Channels\Ussd\UssdClient;
 use Nugsoft\SignalBridge\Channels\WhatsApp\WhatsAppClient;
 use Nugsoft\SignalBridge\Exceptions\SignalBridgeException;
+use Nugsoft\SignalBridge\Exceptions\ValidationException;
 use Nugsoft\SignalBridge\Support\MessageSegments;
 use Nugsoft\SignalBridge\Support\WebhookSignature;
 
@@ -172,11 +173,39 @@ class SignalBridgeClient extends BaseChannelClient
     // -------------------------------------------------------------------------
 
     /**
+     * @throws ValidationException for a channel that has no balance
+     */
+    protected function balanceChannel(string $channel): string
+    {
+        $channel = strtolower($channel);
+
+        if (! in_array($channel, self::BALANCE_CHANNELS, true)) {
+            throw new ValidationException('The balance channel must be one of: '.implode(', ', self::BALANCE_CHANNELS));
+        }
+
+        return $channel;
+    }
+
+    /**
+     * The balances a channel can spend. SMS and WhatsApp have a balance
+     * each, topped up separately.
+     */
+    public const BALANCE_CHANNELS = ['sms', 'whatsapp'];
+
+    /**
+     * One balance: SMS unless `$channel` is 'whatsapp'.
+     *
      * @return array<string, mixed>
      */
-    public function getBalance(string $currency = 'UGX'): array
+    public function getBalance(string $currency = 'UGX', ?string $channel = null): array
     {
-        return $this->request('GET', 'balance', ['query' => ['currency' => strtoupper($currency)]]);
+        $query = ['currency' => strtoupper($currency)];
+
+        if ($channel !== null) {
+            $query['channel'] = $this->balanceChannel($channel);
+        }
+
+        return $this->request('GET', 'balance', ['query' => $query]);
     }
 
     /**
@@ -188,22 +217,31 @@ class SignalBridgeClient extends BaseChannelClient
     }
 
     /**
-     * @param  array<string, mixed>  $filters  per_page, page, type, start_date, end_date
+     * @param  array<string, mixed>  $filters  per_page, page, type, channel (sms or whatsapp), start_date, end_date
      * @return array<string, mixed>
      */
     public function getTransactions(array $filters = []): array
     {
+        if (isset($filters['channel'])) {
+            $filters['channel'] = $this->balanceChannel((string) $filters['channel']);
+        }
+
         return $this->request('GET', 'balance/transactions', ['query' => $filters]);
     }
 
     /**
-     * Ask the administrators for a top-up. This does not move money.
+     * Ask the administrators for a top-up of one balance — SMS unless
+     * `$channel` is 'whatsapp'. This does not move money.
      *
      * @return array<string, mixed>
      */
-    public function requestCredit(float $amount, string $currency = 'UGX', ?string $description = null): array
+    public function requestCredit(float $amount, string $currency = 'UGX', ?string $description = null, ?string $channel = null): array
     {
         $payload = ['amount' => $amount, 'currency' => strtoupper($currency)];
+
+        if ($channel !== null) {
+            $payload['channel'] = $this->balanceChannel($channel);
+        }
 
         if ($description !== null) {
             $payload['description'] = $description;
